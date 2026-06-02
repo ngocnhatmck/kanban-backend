@@ -1,0 +1,182 @@
+.board {
+  display: flex;
+  gap: 18px;
+  padding: 24px 24px 24px;
+  overflow-x: auto;
+  height: calc(100vh - var(--header-height));
+  align-items: flex-start;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.board::-webkit-scrollbar { height: 6px; }
+.board::-webkit-scrollbar-track { background: transparent; }
+.board::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: calc(100vh - var(--header-height));
+  width: 100%;
+  text-align: center;
+  padding: 40px;
+}
+
+.emptyIcon { font-size: 3.5rem; margin-bottom: 16px; }
+
+.emptyTitle {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.emptyText {
+  font-size: var(--text-base);
+  color: var(--text-muted);
+  max-width: 340px;
+  line-height: 1.6;
+}
+
+/* Drag overlay ghost */
+.dragOverlay {
+  width: 300px;
+  transform: rotate(2deg);
+  opacity: 0.88;
+  pointer-events: none;
+  filter: drop-shadow(0 8px 20px rgba(15, 20, 50, 0.18));
+}
+
+/* ─── Add Column Button ─── */
+.addColumnWrapper {
+  flex-shrink: 0;
+  width: 280px;
+  min-width: 280px;
+  align-self: flex-start;
+}
+
+.addColumnBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 2px dashed var(--border-hover);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  backdrop-filter: blur(4px);
+}
+
+.addColumnBtn:hover {
+  background: white;
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.addColumnIcon {
+  width: 28px;
+  height: 28px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+
+.addColumnBtn:hover .addColumnIcon {
+  background: var(--accent);
+  color: white;
+}
+
+.addColumnCard {
+  background: white;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: fadeInUp 0.18s ease;
+}
+
+.addColumnInput {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  outline: none;
+  transition: var(--transition);
+}
+
+.addColumnInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  background: white;
+}
+
+.addColumnActions {
+  display: flex;
+  gap: 8px;
+}
+
+.addColumnConfirm {
+  flex: 1;
+  padding: 9px 14px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.addColumnConfirm:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px var(--accent-glow);
+}
+
+.addColumnCancel {
+  width: 36px;
+  height: 38px;
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+.addColumnCancel:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-bg);
+}

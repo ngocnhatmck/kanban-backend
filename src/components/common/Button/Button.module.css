@@ -1,0 +1,63 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+  letter-spacing: 0.1px;
+}
+
+/* Sizes */
+.sm {
+  padding: 7px 14px;
+  font-size: var(--text-xs);
+}
+
+.md {
+  padding: 10px 20px;
+  font-size: var(--text-sm);
+}
+
+.fullWidth { width: 100%; }
+
+/* Primary */
+.primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+.primary:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 14px var(--accent-glow);
+  transform: translateY(-1px);
+}
+.primary:active { transform: translateY(0); }
+
+/* Ghost */
+.ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1.5px solid var(--border);
+}
+.ghost:hover {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+/* Danger */
+.danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1.5px solid rgba(220, 38, 38, 0.2);
+}
+.danger:hover {
+  background: rgba(220, 38, 38, 0.14);
+  transform: translateY(-1px);
+}
