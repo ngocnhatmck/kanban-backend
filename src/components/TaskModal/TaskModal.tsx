@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import type { Task, Priority } from '../../types/types';
 import { useBoardStore } from '../../hooks/useBoardStore';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 import styles from './TaskModal.module.css';
 
 interface TaskModalProps {
@@ -125,12 +127,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, columnId, onClose })
             {/* Description */}
             <section className={styles.section}>
               <h3 className={styles.sectionTitle}>📝 Mô tả</h3>
-              <textarea
-                className={styles.textarea}
+              <ReactQuill
+                theme="snow"
                 value={description}
-                onChange={(e) => { setDescription(e.target.value); setDirty(true); }}
+                onChange={(content) => { setDescription(content); setDirty(true); }}
+                className={styles.quillEditor}
                 placeholder="Thêm mô tả chi tiết cho công việc..."
-                rows={4}
               />
             </section>
 

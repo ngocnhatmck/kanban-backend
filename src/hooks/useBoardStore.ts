@@ -1,51 +1,96 @@
 import { create } from 'zustand';
-import { nanoid } from 'nanoid';
-import type { Board, ChecklistItem, Priority, Task, Workspace } from '../types/types';
-import { initialWorkspaces } from '../data/mockData';
+import type { Board, Priority, Task, Workspace } from '../types/types';
+import projectApi from '../api/project';
+import boardApi from '../api/board';
+
+// Helper to normalize backend board structure into frontend store structure
+const normalizeBoard = (backendBoard: any): Board => {
+  const tasks: Record<string, Task> = {};
+  const columns = (backendBoard.columns || []).map((col: any) => {
+    const taskIds = (col.taskIds || []).map((task: any) => {
+      const fTask: Task = {
+        id: task._id || task.id,
+        title: task.title,
+        description: task.description,
+        priority: task.priority || 'medium',
+        labels: task.labels || [],
+        checklist: (task.checklist || []).map((item: any) => ({
+          id: item._id || item.id,
+          text: item.text,
+          done: item.done,
+        })),
+        createdAt: task.createdAt,
+        updatedAt: task.updatedAt,
+      };
+      tasks[fTask.id] = fTask;
+      return fTask.id;
+    });
+
+    return {
+      id: col._id || col.id,
+      title: col.title,
+      taskIds,
+    };
+  });
+
+  return {
+    id: backendBoard._id || backendBoard.id,
+    title: backendBoard.title,
+    description: backendBoard.description,
+    columns,
+    tasks,
+  };
+};
 
 interface BoardStoreState {
   workspaces: Workspace[];
   activeWorkspaceId: string | null;
   activeBoardId: string | null;
+  isLoading: boolean;
 
   // Computed getters
   getActiveWorkspace: () => Workspace | undefined;
   getActiveBoard: () => Board | undefined;
 
+  // Sync actions
+  fetchWorkspaces: () => Promise<void>;
+  fetchActiveBoard: () => Promise<void>;
+
   // Workspace actions
   setActiveWorkspace: (id: string) => void;
-  addWorkspace: (title: string, description?: string) => void;
-  deleteWorkspace: (id: string) => void;
+  addWorkspace: (title: string, description?: string) => Promise<void>;
+  deleteWorkspace: (id: string) => Promise<void>;
 
   // Board actions
   setActiveBoard: (id: string) => void;
-  addBoard: (workspaceId: string, title: string, description?: string) => void;
+  addBoard: (workspaceId: string, title: string, description?: string) => Promise<void>;
 
   // Column actions
-  addColumn: (title: string) => void;
+  addColumn: (title: string) => Promise<void>;
 
   // Task actions
-  addTask: (columnId: string, title: string, priority: Priority) => void;
-  updateTask: (taskId: string, updates: Partial<Omit<Task, 'id' | 'createdAt'>>) => void;
-  deleteTask: (columnId: string, taskId: string) => void;
+  addTask: (columnId: string, title: string, priority: Priority) => Promise<void>;
+  updateTask: (taskId: string, updates: Partial<Omit<Task, 'id' | 'createdAt'>>) => Promise<void>;
+  deleteTask: (_columnId: string, taskId: string) => Promise<void>;
   moveTask: (
     taskId: string,
     fromColumnId: string,
     toColumnId: string,
     fromIndex: number,
     toIndex: number
-  ) => void;
+  ) => Promise<void>;
 
   // Checklist actions
-  addChecklistItem: (taskId: string, text: string) => void;
-  toggleChecklistItem: (taskId: string, itemId: string) => void;
-  deleteChecklistItem: (taskId: string, itemId: string) => void;
+  addChecklistItem: (taskId: string, text: string) => Promise<void>;
+  toggleChecklistItem: (taskId: string, itemId: string) => Promise<void>;
+  deleteChecklistItem: (taskId: string, itemId: string) => Promise<void>;
 }
 
 export const useBoardStore = create<BoardStoreState>((set, get) => ({
-  workspaces: initialWorkspaces,
-  activeWorkspaceId: initialWorkspaces[0]?.id ?? null,
-  activeBoardId: initialWorkspaces[0]?.boards[0]?.id ?? null,
+  workspaces: [],
+  activeWorkspaceId: null,
+  activeBoardId: null,
+  isLoading: false,
 
   getActiveWorkspace: (): Workspace | undefined => {
     const { workspaces, activeWorkspaceId } = get();
@@ -59,184 +104,168 @@ export const useBoardStore = create<BoardStoreState>((set, get) => ({
     return workspace.boards.find((b) => b.id === activeBoardId);
   },
 
+  // ── Sync Actions ───────────────────────────────────────────────────────
+  fetchWorkspaces: async () => {
+    try {
+      set({ isLoading: true });
+      const response = await projectApi.getProjects(1, 50);
+      const resData = (response as any).data?.data || response.data;
+      const projects = resData.items || [];
+      
+      const mappedWorkspaces: Workspace[] = projects.map((proj: any) => ({
+        id: proj._id,
+        title: proj.title,
+        description: proj.description,
+        boards: (proj.boards || []).map((b: any) => ({
+          id: b._id || b,
+          title: b.title || 'Board mặc định',
+          description: b.description,
+          columns: [],
+          tasks: {},
+        })),
+        createdAt: proj.createdAt,
+      }));
+
+      const activeWSId = get().activeWorkspaceId || mappedWorkspaces[0]?.id || null;
+      const activeBId = get().activeBoardId || mappedWorkspaces.find(w => w.id === activeWSId)?.boards[0]?.id || null;
+
+      set({
+        workspaces: mappedWorkspaces,
+        activeWorkspaceId: activeWSId,
+        activeBoardId: activeBId,
+        isLoading: false,
+      });
+
+      if (activeBId) {
+        await get().fetchActiveBoard();
+      }
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+      set({ isLoading: false });
+    }
+  },
+
+  fetchActiveBoard: async () => {
+    const boardId = get().activeBoardId;
+    if (!boardId) return;
+
+    try {
+      const response = await boardApi.getBoardById(boardId);
+      const resData = (response as any).data?.data || response.data;
+      
+      if (resData) {
+        const normalizedBoard = normalizeBoard(resData);
+        set((state) => ({
+          workspaces: state.workspaces.map((ws) => {
+            if (ws.id !== state.activeWorkspaceId) return ws;
+            return {
+              ...ws,
+              boards: ws.boards.map((b) => (b.id === boardId ? normalizedBoard : b)),
+            };
+          }),
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching board details:', error);
+    }
+  },
+
   // ── Workspace ──────────────────────────────────────────────────────────
   setActiveWorkspace: (id: string): void => {
-    const state = get();
-    const workspace = state.workspaces.find((ws) => ws.id === id);
+    const workspace = get().workspaces.find((ws) => ws.id === id);
     const firstBoardId = workspace?.boards[0]?.id ?? null;
     set({ activeWorkspaceId: id, activeBoardId: firstBoardId });
+    if (firstBoardId) {
+      get().fetchActiveBoard();
+    }
   },
 
-  addWorkspace: (title: string, description?: string): void => {
-    const newBoard: Board = {
-      id: nanoid(),
-      title: 'Board mặc định',
-      description: 'Board đầu tiên của workspace',
-      columns: [
-        { id: nanoid(), title: 'To Do', taskIds: [] },
-        { id: nanoid(), title: 'Doing', taskIds: [] },
-        { id: nanoid(), title: 'Done', taskIds: [] },
-      ],
-      tasks: {},
-    };
-    const newWorkspace: Workspace = {
-      id: nanoid(),
-      title,
-      description,
-      boards: [newBoard],
-      createdAt: new Date().toISOString(),
-    };
-    set((state) => ({
-      workspaces: [...state.workspaces, newWorkspace],
-      activeWorkspaceId: newWorkspace.id,
-      activeBoardId: newBoard.id,
-    }));
+  addWorkspace: async (title: string, description?: string): Promise<void> => {
+    try {
+      await projectApi.createProject({ title, description });
+      await get().fetchWorkspaces();
+    } catch (error) {
+      console.error('Error creating project:', error);
+    }
   },
 
-  deleteWorkspace: (id: string): void => {
-    set((state) => {
-      const filtered = state.workspaces.filter((ws) => ws.id !== id);
-      const nextActive = filtered[0];
-      return {
-        workspaces: filtered,
-        activeWorkspaceId: nextActive?.id ?? null,
-        activeBoardId: nextActive?.boards[0]?.id ?? null,
-      };
-    });
+  deleteWorkspace: async (id: string): Promise<void> => {
+    try {
+      await projectApi.deleteProject(id);
+      set({ activeWorkspaceId: null, activeBoardId: null });
+      await get().fetchWorkspaces();
+    } catch (error) {
+      console.error('Error deleting project:', error);
+    }
   },
 
   // ── Board ──────────────────────────────────────────────────────────────
   setActiveBoard: (id: string): void => {
     set({ activeBoardId: id });
+    get().fetchActiveBoard();
   },
 
-  addBoard: (workspaceId: string, title: string, description?: string): void => {
-    const newBoard: Board = {
-      id: nanoid(),
-      title,
-      description,
-      columns: [
-        { id: nanoid(), title: 'To Do', taskIds: [] },
-        { id: nanoid(), title: 'Doing', taskIds: [] },
-        { id: nanoid(), title: 'Done', taskIds: [] },
-      ],
-      tasks: {},
-    };
-    set((state) => ({
-      workspaces: state.workspaces.map((ws) =>
-        ws.id !== workspaceId ? ws : { ...ws, boards: [...ws.boards, newBoard] }
-      ),
-      activeBoardId: newBoard.id,
-    }));
+  addBoard: async (workspaceId: string, title: string, description?: string): Promise<void> => {
+    try {
+      await boardApi.createBoard(workspaceId, { title, description });
+      await get().fetchWorkspaces();
+    } catch (error) {
+      console.error('Error creating board:', error);
+    }
   },
 
   // ── Column ─────────────────────────────────────────────────────────────
-  addColumn: (title: string): void => {
-    const newColumn = { id: nanoid(), title, taskIds: [] as string[] };
-    set((state) => ({
-      workspaces: state.workspaces.map((ws) => {
-        if (ws.id !== state.activeWorkspaceId) return ws;
-        return {
-          ...ws,
-          boards: ws.boards.map((board) =>
-            board.id !== state.activeBoardId
-              ? board
-              : { ...board, columns: [...board.columns, newColumn] }
-          ),
-        };
-      }),
-    }));
+  addColumn: async (title: string): Promise<void> => {
+    const boardId = get().activeBoardId;
+    if (!boardId) return;
+    try {
+      await boardApi.addColumn(boardId, title);
+      await get().fetchActiveBoard();
+    } catch (error) {
+      console.error('Error creating column:', error);
+    }
   },
 
   // ── Task ───────────────────────────────────────────────────────────────
-  addTask: (columnId: string, title: string, priority: Priority): void => {
-    const now = new Date().toISOString();
-    const newTask: Task = {
-      id: nanoid(),
-      title,
-      priority,
-      labels: [],
-      checklist: [],
-      createdAt: now,
-      updatedAt: now,
-    };
-    set((state) => ({
-      workspaces: state.workspaces.map((ws) => {
-        if (ws.id !== state.activeWorkspaceId) return ws;
-        return {
-          ...ws,
-          boards: ws.boards.map((board) => {
-            if (board.id !== state.activeBoardId) return board;
-            return {
-              ...board,
-              tasks: { ...board.tasks, [newTask.id]: newTask },
-              columns: board.columns.map((col) =>
-                col.id !== columnId
-                  ? col
-                  : { ...col, taskIds: [...col.taskIds, newTask.id] }
-              ),
-            };
-          }),
-        };
-      }),
-    }));
+  addTask: async (columnId: string, title: string, priority: Priority): Promise<void> => {
+    const boardId = get().activeBoardId;
+    if (!boardId) return;
+    try {
+      await boardApi.createTask(boardId, { title, priority, columnId });
+      await get().fetchActiveBoard();
+    } catch (error) {
+      console.error('Error creating task:', error);
+    }
   },
 
-  updateTask: (taskId: string, updates: Partial<Omit<Task, 'id' | 'createdAt'>>): void => {
-    const now = new Date().toISOString();
-    set((state) => ({
-      workspaces: state.workspaces.map((ws) => {
-        if (ws.id !== state.activeWorkspaceId) return ws;
-        return {
-          ...ws,
-          boards: ws.boards.map((board) => {
-            if (board.id !== state.activeBoardId) return board;
-            const existing = board.tasks[taskId];
-            if (!existing) return board;
-            return {
-              ...board,
-              tasks: {
-                ...board.tasks,
-                [taskId]: { ...existing, ...updates, updatedAt: now },
-              },
-            };
-          }),
-        };
-      }),
-    }));
+  updateTask: async (taskId: string, updates: Partial<Omit<Task, 'id' | 'createdAt'>>): Promise<void> => {
+    try {
+      await boardApi.updateTask(taskId, updates);
+      await get().fetchActiveBoard();
+    } catch (error) {
+      console.error('Error updating task:', error);
+    }
   },
 
-  deleteTask: (columnId: string, taskId: string): void => {
-    set((state) => ({
-      workspaces: state.workspaces.map((ws) => {
-        if (ws.id !== state.activeWorkspaceId) return ws;
-        return {
-          ...ws,
-          boards: ws.boards.map((board) => {
-            if (board.id !== state.activeBoardId) return board;
-            const { [taskId]: _removed, ...remainingTasks } = board.tasks;
-            return {
-              ...board,
-              tasks: remainingTasks,
-              columns: board.columns.map((col) =>
-                col.id !== columnId
-                  ? col
-                  : { ...col, taskIds: col.taskIds.filter((id) => id !== taskId) }
-              ),
-            };
-          }),
-        };
-      }),
-    }));
+  deleteTask: async (_columnId: string, taskId: string): Promise<void> => {
+    try {
+      await boardApi.deleteTask(taskId);
+      await get().fetchActiveBoard();
+    } catch (error) {
+      console.error('Error deleting task:', error);
+    }
   },
 
-  moveTask: (
+  moveTask: async (
     taskId: string,
     fromColumnId: string,
     toColumnId: string,
     fromIndex: number,
     toIndex: number
-  ): void => {
+  ): Promise<void> => {
+    const prevWorkspaces = get().workspaces;
+    
+    // Optimistic Update
     set((state) => ({
       workspaces: state.workspaces.map((ws) => {
         if (ws.id !== state.activeWorkspaceId) return ws;
@@ -258,86 +287,64 @@ export const useBoardStore = create<BoardStoreState>((set, get) => ({
         };
       }),
     }));
+
+    try {
+      const activeBoardId = get().activeBoardId;
+      if (!activeBoardId) return;
+
+      const response = await boardApi.reorderTask(activeBoardId, {
+        taskId,
+        fromColumnId,
+        toColumnId,
+        fromIndex,
+        toIndex,
+      });
+
+      const resData = (response as any).data?.data || response.data;
+      if (resData) {
+        const normalizedBoard = normalizeBoard(resData);
+        set((state) => ({
+          workspaces: state.workspaces.map((ws) => {
+            if (ws.id !== state.activeWorkspaceId) return ws;
+            return {
+              ...ws,
+              boards: ws.boards.map((b) => (b.id === activeBoardId ? normalizedBoard : b)),
+            };
+          }),
+        }));
+      }
+    } catch (error) {
+      console.error('Error reordering task:', error);
+      // Rollback on error
+      set({ workspaces: prevWorkspaces });
+    }
   },
 
   // ── Checklist ──────────────────────────────────────────────────────────
-  addChecklistItem: (taskId: string, text: string): void => {
-    const item: ChecklistItem = { id: nanoid(), text, done: false };
-    set((state) => ({
-      workspaces: state.workspaces.map((ws) => {
-        if (ws.id !== state.activeWorkspaceId) return ws;
-        return {
-          ...ws,
-          boards: ws.boards.map((board) => {
-            if (board.id !== state.activeBoardId) return board;
-            const task = board.tasks[taskId];
-            if (!task) return board;
-            return {
-              ...board,
-              tasks: {
-                ...board.tasks,
-                [taskId]: { ...task, checklist: [...task.checklist, item], updatedAt: new Date().toISOString() },
-              },
-            };
-          }),
-        };
-      }),
-    }));
+  addChecklistItem: async (taskId: string, text: string): Promise<void> => {
+    try {
+      await boardApi.addChecklistItem(taskId, text);
+      await get().fetchActiveBoard();
+    } catch (error) {
+      console.error('Error adding checklist item:', error);
+    }
   },
 
-  toggleChecklistItem: (taskId: string, itemId: string): void => {
-    set((state) => ({
-      workspaces: state.workspaces.map((ws) => {
-        if (ws.id !== state.activeWorkspaceId) return ws;
-        return {
-          ...ws,
-          boards: ws.boards.map((board) => {
-            if (board.id !== state.activeBoardId) return board;
-            const task = board.tasks[taskId];
-            if (!task) return board;
-            return {
-              ...board,
-              tasks: {
-                ...board.tasks,
-                [taskId]: {
-                  ...task,
-                  checklist: task.checklist.map((item) =>
-                    item.id !== itemId ? item : { ...item, done: !item.done }
-                  ),
-                  updatedAt: new Date().toISOString(),
-                },
-              },
-            };
-          }),
-        };
-      }),
-    }));
+  toggleChecklistItem: async (taskId: string, itemId: string): Promise<void> => {
+    try {
+      await boardApi.toggleChecklistItem(taskId, itemId);
+      await get().fetchActiveBoard();
+    } catch (error) {
+      console.error('Error toggling checklist item:', error);
+    }
   },
 
-  deleteChecklistItem: (taskId: string, itemId: string): void => {
-    set((state) => ({
-      workspaces: state.workspaces.map((ws) => {
-        if (ws.id !== state.activeWorkspaceId) return ws;
-        return {
-          ...ws,
-          boards: ws.boards.map((board) => {
-            if (board.id !== state.activeBoardId) return board;
-            const task = board.tasks[taskId];
-            if (!task) return board;
-            return {
-              ...board,
-              tasks: {
-                ...board.tasks,
-                [taskId]: {
-                  ...task,
-                  checklist: task.checklist.filter((item) => item.id !== itemId),
-                  updatedAt: new Date().toISOString(),
-                },
-              },
-            };
-          }),
-        };
-      }),
-    }));
+  deleteChecklistItem: async (taskId: string, itemId: string): Promise<void> => {
+    try {
+      await boardApi.deleteChecklistItem(taskId, itemId);
+      await get().fetchActiveBoard();
+    } catch (error) {
+      console.error('Error deleting checklist item:', error);
+    }
   },
 }));
