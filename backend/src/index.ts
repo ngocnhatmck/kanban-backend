@@ -117,3 +117,19 @@ async function startServer(): Promise<void> {
 }
 
 startServer();
+
+// ============================================================================
+// Keep-alive: Ping tự động mỗi 10 phút để tránh Render ngủ (free tier)
+// ============================================================================
+if (process.env.NODE_ENV === 'production') {
+  const SELF_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3000}`;
+  setInterval(async () => {
+    try {
+      const res = await fetch(`${SELF_URL}/api/v1/health`);
+      console.log(`🏓 Keep-alive ping: ${res.status}`);
+    } catch (err) {
+      console.warn('⚠️ Keep-alive ping failed:', err);
+    }
+  }, 10 * 60 * 1000); // mỗi 10 phút
+}
+
